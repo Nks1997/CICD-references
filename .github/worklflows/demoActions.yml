@@ -1,0 +1,154 @@
+name: Full Demo CI/CD Pipeline
+
+# Trigger workflow on push to main or develop, or pull requests to main, or manually
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the code from GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup Node.js environment for building the app
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Install project dependencies
+      - name: Install Dependencies
+        run: npm install
+
+      # Run code linter to check for syntax/style issues
+      - name: Run Linter
+        run: npm run lint
+
+      # Run unit tests
+      - name: Run Unit Tests
+        run: npm test
+
+      # Upload test results as artifact for future reference
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: reports/test-results.xml
+
+      # Build the application (production-ready)
+      - name: Build Application
+        run: npm run build
+
+      # Upload the build artifacts for deployment steps
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifact
+          path: dist/
+
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: development
+      url: https://dev.example.com
+    steps:
+      # Download build artifact from previous job
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifact
+          path: ./deploy
+
+      # Deploy the app to the dev server (placeholder command)
+      - name: Deploy Application
+        run: echo "Deploying to Dev Server..."
+
+      # Notify team via GitHub issue comment about deployment
+      - name: Notify Deployment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.issues.createComment({
+              issue_number: 1,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "Deployment to Development completed"
+            })
+
+  approval-prod:
+    name: Wait for Production Approval
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    environment:
+      name: production
+      url: https://prod.example.com
+    steps:
+      # Placeholder for manual approval (can use environment protection rules in GitHub)
+      - name: Await Manual Approval
+        uses: hmarr/auto-approve-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: approval-prod
+    steps:
+      # Download build artifact for production deployment
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifact
+          path: ./deploy
+
+      # Deploy the app to production server (placeholder)
+      - name: Deploy Application
+        run: echo "Deploying to Production Server..."
+
+      # Notify team via GitHub issue comment about prod deployment
+      - name: Notify Prod Deployment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.issues.createComment({
+              issue_number: 1,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "Production deployment completed"
+            })
+
+  cleanup:
+    name: Cleanup Workspace
+    runs-on: ubuntu-latest
+    needs: [deploy-dev, deploy-prod]
+    steps:
+      # Remove temporary files created during build/deploy
+      - name: Remove Temporary Files
+        run: rm -rf ./deploy ./dist
+
+  notifications:
+    name: Slack Notification
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      # Send Slack message at the end of workflow
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL }}
+          slack-message: "Workflow ${{ github.workflow }} finished for ${{ github.ref }}"
