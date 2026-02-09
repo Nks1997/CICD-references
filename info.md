@@ -1,6 +1,6 @@
 # DevOps Tools & Skills Reference
 
-This document lists the DevOps tools and technologies I am learning or using, organized by category for quick reference.
+This document lists the DevOps tools and technologies, organized by category for quick reference.
 
 ---
 
