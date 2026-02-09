@@ -1,0 +1,46 @@
+name: Build and Deploy Java App to Azure Ubuntu VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checkout source code
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # Setup Java
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    # Build application using Maven
+    - name: Build
+      run: mvn clean package -DskipTests
+
+    # Copy JAR to Azure Ubuntu VM
+    - name: Copy files to Azure VM
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.AZURE_VM_HOST }}
+        username: ${{ secrets.AZURE_VM_USER }}
+        key: ${{ secrets.AZURE_VM_SSH_KEY }}
+        source: "target/*.jar"
+        target: "/opt/java-app"
+
+    # Restart application on VM
+    - name: Restart application
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.AZURE_VM_HOST }}
+        username: ${{ secrets.AZURE_VM_USER }}
+        key: ${{ secrets.AZURE_VM_SSH_KEY }}
+        script: |
+          sudo systemctl restart java-app
