@@ -102,11 +102,23 @@ This document lists DevOps tools and technologies organized by category, includi
 
 ---
 
-## 11️⃣ Operating Systems
+## Operating Systems
 | OS | Priority | Notes |
 |----|---------|-------|
 | Linux | Must | Servers, containers, Bash scripting |
 | Windows / WSL | Must | PowerShell, Azure CLI, hybrid environments |
 
 ---
+
+## Other “Soft” Skills / Plus Points
+
+- Mentoring / reviewing pipelines & infra
+
+- Writing runbooks, SOPs, and documentation for large teams
+
+- Debugging production outages
+
+- Cloud cost optimization experience
+
+- Security / compliance in cloud deployments
 
