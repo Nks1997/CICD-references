@@ -1,0 +1,387 @@
+# =========================
+# TRIGGERS
+# =========================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+    exclude:
+      - feature/*
+  paths:
+    include:
+      - src/**
+      - pipelines/**
+    exclude:
+      - docs/**
+      - README.md
+
+pr:
+  branches:
+    include:
+      - main
+
+# =========================
+# PARAMETERS (compile-time)
+# =========================
+parameters:
+- name: environment
+  type: string
+  default: dev
+  values:
+    - dev
+    - qa
+    - prod
+
+- name: runSecurityScan
+  type: boolean
+  default: true
+
+- name: regions
+  type: object     # list
+  default:
+    - eastus
+    - westus
+
+# =========================
+# VARIABLES
+# =========================
+variables:
+# normal variables
+- name: appName
+  value: voting-app
+
+- name: buildConfig
+  value: Release
+
+# variable group (Library)
+- group: common-secrets
+
+# expression variable
+- name: isMain
+  value: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+
+# =========================
+# STAGES
+# =========================
+stages:
+
+# -------------------------
+# BUILD STAGE
+# -------------------------
+- stage: Build
+  displayName: Build Stage
+  condition: succeeded()
+  jobs:
+
+  - job: BuildJob
+    displayName: Build Job
+    pool:
+      vmImage: ubuntu-latest
+
+    steps:
+    - checkout: self
+
+    - script: |
+        echo "App: $(appName)"
+        echo "Branch: $(Build.SourceBranch)"
+        echo "Agent OS: $(Agent.OS)"
+      displayName: Show system variables
+
+    - task: Docker@2
+      displayName: Build Docker Image
+      inputs:
+        command: build
+        Dockerfile: Dockerfile
+        repository: $(appName)
+        tags: |
+          $(Build.BuildId)
+
+# -------------------------
+# TEST STAGE
+# -------------------------
+- stage: Test
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+
+  - job: TestJob
+    pool:
+      vmImage: ubuntu-latest
+
+    steps:
+    - script: |
+        echo "Running tests..."
+      displayName: Unit Tests
+
+# -------------------------
+# SECURITY STAGE (conditional)
+# -------------------------
+- stage: SecurityScan
+  dependsOn: Test
+  condition: and(succeeded(), eq('${{ parameters.runSecurityScan }}', true))
+  jobs:
+
+  - job: Scan
+    steps:
+    - script: echo "Running security scan..."
+
+# -------------------------
+# DEPLOY STAGE
+# -------------------------
+- stage: Deploy
+  dependsOn: SecurityScan
+  condition: succeeded()
+
+  jobs:
+  - deployment: DeployJob
+    displayName: Deploy to ${{ parameters.environment }}
+    environment: 
+      name: ${{ parameters.environment }}
+      resourceType: VirtualMachine
+      # approvals configured in ADO UI
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: |
+              echo "Deploying $(appName)"
+              echo "Environment: ${{ parameters.environment }}"
+            displayName: Deploy App
+
+          - ${{ each region in parameters.regions }}:
+            - script: echo "Deploying to region: ${{ region }}"
+#####################################################################################
+# =====================================================
+# PIPELINE NAME
+# =====================================================
+name: $(Build.DefinitionName)_$(Date:yyyyMMdd)_$(Rev:.r)
+
+# =====================================================
+# TRIGGERS
+# =====================================================
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+    exclude:
+      - feature/*
+  paths:
+    include:
+      - src/**
+      - pipelines/**
+    exclude:
+      - docs/**
+      - README.md
+
+pr:
+  branches:
+    include:
+      - main
+
+resources:
+  repositories:
+  - repository: templatesRepo          # alias used in YAML
+    type: git                          # git | github | bitbucket
+    name: DevOpsProject/pipeline-templates
+    ref: refs/tags/v1.2.0              # branch / tag / commit
+    endpoint: my-github-service-conn   # ONLY for GitHub/Bitbucket
+
+
+
+
+# =====================================================
+# EXTENDS (PIPELINE INHERITANCE)
+# =====================================================
+# Used when you want to inherit a base pipeline
+# NOTE: In real life this replaces most of the YAML below
+# extends:
+#   template: templates/base-pipeline.yml
+#   parameters:
+#     environment: dev
+
+# =====================================================
+# PARAMETERS (COMPILE TIME)
+# =====================================================
+parameters:
+- name: environment
+  type: string
+  default: dev
+  values: [dev, qa, prod]
+
+- name: runSecurityScan
+  type: boolean
+  default: true
+
+- name: regions
+  type: object
+  default:
+    - eastus
+    - westus
+
+- name: notifyEmails
+  type: object
+  default:
+    - devops@company.com
+    - lead@company.com
+
+# =====================================================
+# VARIABLES (RUNTIME)
+# =====================================================
+variables:
+- name: appName
+  value: example-voting-app
+
+- name: buildConfig
+  value: Release
+
+# Variable Group (Library → Variable Groups)
+- group: shared-secrets
+
+# Expression variable
+- name: isMain
+  value: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+
+# =====================================================
+# POOL / AGENT CONFIG
+# =====================================================
+pool:
+  vmImage: ubuntu-latest   # Microsoft-hosted agent
+
+# Self-hosted example (commented)
+# pool:
+#   name: my-self-hosted-pool
+#   demands:
+#     - Agent.OS -equals Linux
+
+# =====================================================
+# STAGES
+# =====================================================
+stages:
+- template: build.yml@templatesRepo
+
+# -----------------------------------------------------
+# BUILD STAGE
+# -----------------------------------------------------
+- stage: Build
+  displayName: Build Stage
+  condition: succeeded()
+  jobs:
+
+  - job: BuildJob
+    displayName: Build Job
+    pool:
+      vmImage: ubuntu-latest   # Job-level override
+    steps:
+
+    - checkout: self
+
+    - script: |
+        echo "App Name: $(appName)"
+        echo "Branch: $(Build.SourceBranch)"
+        echo "Agent OS: $(Agent.OS)"
+        echo "Agent Arch: $(Agent.OSArchitecture)"
+      displayName: Show system variables
+
+    - task: Docker@2
+      displayName: Docker Build
+      inputs:
+        command: build
+        Dockerfile: Dockerfile
+        repository: $(appName)
+        tags: |
+          $(Build.BuildId)
+
+# -----------------------------------------------------
+# TEST STAGE
+# -----------------------------------------------------
+- stage: Test
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+
+  - job: TestJob
+    steps:
+    - script: echo "Running tests..."
+
+# -----------------------------------------------------
+# SECURITY STAGE (CONDITIONAL)
+# -----------------------------------------------------
+- stage: Security
+  dependsOn: Test
+  condition: and(succeeded(), eq('${{ parameters.runSecurityScan }}', true))
+  jobs:
+
+  - job: ScanJob
+    steps:
+    - script: echo "Security scan running..."
+
+# -----------------------------------------------------
+# DEPLOY STAGE (ENVIRONMENT + RESOURCE + APPROVALS)
+# -----------------------------------------------------
+- stage: Deploy
+  dependsOn: Security
+  condition: succeeded()
+  jobs:
+
+  - deployment: DeployJob
+    displayName: Deploy to ${{ parameters.environment }}
+
+    # =========================
+    # ENVIRONMENT
+    # =========================
+    environment:
+      name: ${{ parameters.environment }}
+      resourceType: Kubernetes
+      resourceName: aks-cluster-01
+      # Approvals & Checks configured in UI:
+      # - Manual approval
+      # - Branch control
+      # - Business hours
+      # - REST gate
+
+    # =========================
+    # STRATEGY
+    # =========================
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - script: |
+              echo "Deploying $(appName)"
+              echo "Environment: ${{ parameters.environment }}"
+            displayName: Deploy application
+
+          # =========================
+          # LOOP (OBJECT PARAMETER)
+          # =========================
+          - ${{ each region in parameters.regions }}:
+            - script: echo "Deploying to region: ${{ region }}"
+
+          # =========================
+          # ENV VARS
+          # =========================
+          - script: |
+              echo "DB_HOST=$DB_HOST"
+            env:
+              DB_HOST: $(DatabaseHost)
+
+# =====================================================
+# TEMPLATES (REFERENCE)
+# =====================================================
+# Example usage:
+#
+# - template: templates/build.yml
+#   parameters:
+#     appName: $(appName)
+
+# =====================================================
+# NOTIFICATIONS (OUTSIDE YAML)
+# =====================================================
+# Configured in:
+# Project Settings → Notifications
+# Environment → Approvals & Checks
+
